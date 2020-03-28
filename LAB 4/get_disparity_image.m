@@ -1,65 +1,76 @@
+function get_disparity_image(file1,file2,p_r,max_disp)
+tic
+% Get disparity image between file1 and file2, use square patch of
+% chebyshev radius p_r, maximum disparity is max_disp.
+imagel=imread(file1);
+imager=imread(file2);
+% Assume both images have same size.
+% 3rd dim is color channels, we don't need to know it.
+[i_h, i_w, ~] = size(imagel);
+disparity_matrix = zeros(i_h, i_w);
 
-function get_disparity_image(file1,file2,p_w,p_h)
-    imagel=imread(file1);
-    imager=imread(file2);
-    disparity_matrix = compute_disparity(imagel,imager,p_w,p_h);
-    fprintf("%d %d", size(disparity_matrix));
-    disparity_image = mat2gray(disparity_matrix);
-    imwrite(disparity_image,"disparity.bmp");
-end
-
-% Given two images from left and right, compute the disparity in each point
-% using p_w and p_h for the width and height of the patch
-function disparity=compute_disparity(imagel,imager, p_w, p_h)
-    % image sizes
-    i_w = size(imagel, 1);
-    i_h = size(imagel, 2);
-    fprintf("%d %d\n", i_w, i_h);
-    fprintf("%d %d\n", p_w, p_h);
-    disparity=zeros(i_w, i_h);
-    
-    % WE HAVE TO PARALLELIZE THIS
-    % ACTUALLY VECTORIZE https://nl.mathworks.com/matlabcentral/answers/182083-changing-the-step-in-a-for-loop
-    for ul=1:i_w-p_w
-        for vl=1:i_h-p_h
-            fprintf("%d %d\n", ul, vl);
-            patch=imagel(ul:ul+p_w-1, vl:vl+p_h-1);
-            point_on_right = get_similar_region(patch,imager);
-            disparity(ul,vl)= ul - point_on_right(1);
-        end
-    end
-end
-    
-% normalized cross correlation https://nl.mathworks.com/help/images/ref/normxcorr2.html
-% patch - a 2d matrix of pixels that must be found in an image
-% image - the image to search through
-function coords=get_similar_region(patch, image)
-    % patch sizes
-    p_w = size(patch,1);
-    p_h = size(patch,2);
-    % image sizes
-    i_w = size(image,1);
-    i_h = size(image,2);
-    % initialize most similar region
-    coords = [1, 1];
-    best_fit_score = normxcorr2(patch, image(1:p_w, 1:p_h));
-    for ui=1:i_w-p_w
-        for vi=1:i_h-p_h
-            region=image(ui:ui+p_w-1, vi:vi+p_h-1);
-            fit_score = normxcorr2(patch,region);
-            if fit_score > best_fit_score
-                coords = [ui, vi];
+% Parse the left image point by point.
+% We discarded the points on the very edge (a border of width p_r) as it
+% seems the same thing was done in the provided "ground truth" image.
+for vl=1+p_r:i_h-p_r
+    for ul=1+p_r:i_w-p_r
+        patchL = imagel(vl-p_r:vl+p_r, ul-p_r:ul+p_r);
+        % Initialize fit score with worst case value.
+        
+        % Sum of squared differences
+        % best_fit_score = (2*p_r+1)^2*255*255;
+        
+        % Sum of absolute differences
+        best_fit_score = (2*p_r+1)^2*255;
+        
+        % Normalized cross corellation
+        % best_fit_score = -1;
+        
+        other_u = 0;
+        
+        % Only check max_disp pixels back and forth, it takes very long to 
+        % compute and we couldn't see any disparity higher than 15
+        % anyway.
+        start_ur = max(ul-max_disp, 1+p_r);
+        end_ur = min(ul+max_disp, i_w-p_r);
+        for ur=start_ur:end_ur
+            patchR = imager(vl-p_r:vl+p_r, ur-p_r:ur+p_r);
+            X = double(patchL) - double(patchR);
+            
+            % Sum of squared differences
+            % fit_score = sum(X(:).^2);
+            
+            % Sum of absolute differences
+            fit_score = sum(abs(X), 'all');
+            
+            % Normalized cross corellation
+            % fit_score = normxcorr2(patchL,patchR);
+            
+            % Maximize cross correlation, minimize differences.
+            if fit_score < best_fit_score
+                other_u = ur;
                 best_fit_score = fit_score;
             end
         end
+        if other_u == 0
+            % This probably means you forgot to flip the sign.
+            error('Did not find ur.');
+        end
+        % fprintf('ul vl: %03d %03d, ur: %03d, disparity: %02d\n', ul, vl, other_u, ul-other_u);
+        disparity_matrix(vl, ul)= ul - other_u;
     end
 end
 
-% calculate 3d coordinates from 2 pairs of 2d coordinates from cameras with
-% focal length f set distance b apart
-function coords=get_coords(ul, ur, vl, vr, f, b)
-    z = f .* b .* (ul - ur);
-    x = ((z ./ f .* ul - b ./ 2) + (z ./ f .* ur - b ./ 2)) ./ 2;
-    y = ((z ./ f .* vl - b ./ 2) + (z ./ f .* vr - b ./ 2)) ./ 2;
-    coords = [x, y, z];
+% All disparities should have same sign, so remove the noise that doesn't.
+if mean(disparity_matrix, 'all') > 0
+    disparity_matrix = max(disparity_matrix, zeros(i_h, i_w));
+else
+    disparity_matrix = min(disparity_matrix, zeros(i_h, i_w));
+end
+    
+fprintf('%d %d max: %d, min: %d\n', size(disparity_matrix), max(disparity_matrix(:)), min(disparity_matrix(:)));
+% mat2gray also normalizes
+disparity_image = mat2gray(disparity_matrix);
+imwrite(disparity_image,"disparity.png");
+toc
 end

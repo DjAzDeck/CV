@@ -28,7 +28,7 @@ for vl=1+p_r:i_h-p_r
         
         other_u = 0;
         
-        % Only check max_disp pixels back and forth, it takes very long to 
+        % Only check max_disp pixels back and forth, it takes very long to
         % compute and we couldn't see any disparity higher than 15
         % anyway.
         start_ur = max(ul-max_disp, 1+p_r);
@@ -36,6 +36,17 @@ for vl=1+p_r:i_h-p_r
         for ur=start_ur:end_ur
             patchR = imager(vl-p_r:vl+p_r, ur-p_r:ur+p_r);
             X = double(patchL) - double(patchR);
+            
+            % Remove some elements from the corners to get von Neumann
+            % neighborhood. This was just trial and error on paper.
+            for i=1:size(X,1)
+                for j=1:size(X,2)
+                    % Top left, bottom left, top right, bottom right
+                    if i + j < p_r + 2 || i - j  > p_r || j - i > p_r || i + j > 3 * p_r + 2
+                        X(i,j) = 0;
+                    end
+                end
+            end
             
             % Sum of squared differences
             % fit_score = sum(X(:).^2);
@@ -67,7 +78,7 @@ if mean(disparity_matrix, 'all') > 0
 else
     disparity_matrix = min(disparity_matrix, zeros(i_h, i_w));
 end
-    
+
 fprintf('%d %d max: %d, min: %d\n', size(disparity_matrix), max(disparity_matrix(:)), min(disparity_matrix(:)));
 % mat2gray also normalizes
 disparity_image = mat2gray(disparity_matrix);

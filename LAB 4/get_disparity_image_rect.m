@@ -1,7 +1,7 @@
 function get_disparity_image_rect(file1,file2,p_h,p_w,max_disp)
 tic
 % Get disparity image between file1 and file2, use rectangular patch of
-% size p_h by p_r, maximum disparity is max_disp.
+% size p_h by p_w, maximum disparity is max_disp.
 imagel=imread(file1);
 imager=imread(file2);
 % Assume both images have same size.
@@ -10,18 +10,18 @@ imager=imread(file2);
 disparity_matrix = zeros(i_h, i_w);
 
 % Parse the left image point by point.
-% We discarded the points on the very edge (a border of width p_r) as it
+% We discarded the points on the very edge (a border of width p_h or p_w) as it
 % seems the same thing was done in the provided "ground truth" image.
-for vl=1+p_r:i_h-p_r
-    for ul=1+p_r:i_w-p_r
-        patchL = imagel(vl-p_r:vl+p_r, ul-p_r:ul+p_r);
+for vl=1+p_h:i_h-p_h
+    for ul=1+p_w:i_w-p_w
+        patchL = imagel(vl-p_h:vl+p_h, ul-p_w:ul+p_w);
         % Initialize fit score with worst case value.
         
         % Sum of squared differences
-        % best_fit_score = (2*p_r+1)^2*255*255;
+        % best_fit_score = (2*p_w+1)*(2*p_h+1)*255*255;
         
         % Sum of absolute differences
-        best_fit_score = (2*p_r+1)^2*255;
+        best_fit_score = (2*p_w+1)*(2*p_h+1)*255;
         
         % Normalized cross corellation
         % best_fit_score = -1;
@@ -31,10 +31,10 @@ for vl=1+p_r:i_h-p_r
         % Only check max_disp pixels back and forth, it takes very long to
         % compute and we couldn't see any disparity higher than 15
         % anyway.
-        start_ur = max(ul-max_disp, 1+p_r);
-        end_ur = min(ul+max_disp, i_w-p_r);
+        start_ur = max(ul-max_disp, 1+p_w);
+        end_ur = min(ul+max_disp, i_w-p_w);
         for ur=start_ur:end_ur
-            patchR = imager(vl-p_r:vl+p_r, ur-p_r:ur+p_r);
+            patchR = imager(vl-p_h:vl+p_h, ur-p_w:ur+p_w);
             X = double(patchL) - double(patchR);
                         
             % Sum of squared differences
